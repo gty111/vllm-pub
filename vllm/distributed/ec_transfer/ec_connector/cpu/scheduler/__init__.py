@@ -142,8 +142,10 @@ class ECCPUScheduler:
                 "ec_enable_nixl requires NIXL; install the `nixl` package or "
                 "remove ec_enable_nixl from ec_connector_extra_config."
             )
-        engine_id = self._ec_config.engine_id
-        assert engine_id is not None
+        engine_id = (
+            f"{vllm_config.instance_id}_dp"
+            f"{vllm_config.parallel_config.data_parallel_index}"
+        )
         self._dtype = vllm_config.model_config.dtype
         self._hidden_dim = _get_encoder_cache_hidden_dim(vllm_config)
         self._element_size = torch.empty(0, dtype=self._dtype).element_size()
@@ -163,7 +165,6 @@ class ECCPUScheduler:
         )
         if self._is_producer:
             self._peer_host = envs.VLLM_EC_SIDE_CHANNEL_HOST
-            self._peer_port = envs.VLLM_EC_SIDE_CHANNEL_PORT
 
         # Registering the region with NIXL and binding the control sockets are
         # the first side effects here. __init__ propagates a failure, so the
@@ -180,11 +181,10 @@ class ECCPUScheduler:
             )
             if self._is_producer:
                 assert self._peer_host is not None
-                assert self._peer_port is not None
+                transport = ZmqServerTransport(host=self._peer_host)
+                self._peer_port = transport.port
                 self._producer_session = ProducerSession(
-                    transport=ZmqServerTransport(
-                        host=self._peer_host, port=self._peer_port
-                    ),
+                    transport=transport,
                     data=self._data,
                     cache=self._cache,
                     compat_hash=self._compat_hash,
